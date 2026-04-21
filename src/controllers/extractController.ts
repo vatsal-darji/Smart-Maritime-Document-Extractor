@@ -1,0 +1,128 @@
+import { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import {
+  computeFileHash,
+  runExtractionPipeline,
+  buildExtractionResponse,
+  checkDedup,
+  findOrCreateSession,
+} from '@/services/extractionService';
+import { createJob } from '@/repositories/job';
+import { extractionQueue } from '@/helpers/queue';
+import { SupportedExtractionMimeType } from '@/types/extraction'
+
+function isSupportedMimeType(value: string): value is SupportedExtractionMimeType {
+  return (
+    value === "image/jpeg" ||
+    value === "image/png" ||
+    value === "application/pdf"
+  );
+}
+
+export async function extractController(req: Request, res: Response) {
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({
+      error: 'UNSUPPORTED_FORMAT',
+      message: 'No file uploaded.',
+      retryAfterMs: null,
+    });
+  }
+
+  const mode = (req.query.mode as string) ?? 'sync';
+  const sessionId = req.body.sessionId as string | undefined;
+
+  if (!isSupportedMimeType(file.mimetype)) {
+    return res.status(400).json({
+      error: 'UNSUPPORTED_FORMAT',
+      message: 'Only JPEG, PNG, and PDF files are supported.',
+      retryAfterMs: null,
+    });
+  }
+
+  const mimeType: SupportedExtractionMimeType = file.mimetype;
+
+  //verify session id
+  if (sessionId) {
+    const session = await findOrCreateSession(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        error: 'SESSION_NOT_FOUND',
+        message: `Session ${sessionId} does not exist.`,
+        retryAfterMs: null,
+      });
+    }
+  }
+
+  const resolvedSessionId = sessionId ?? uuidv4();
+  await findOrCreateSession(resolvedSessionId);
+
+  const fileHash = computeFileHash(file.path);
+
+  const duplicate = await checkDedup(resolvedSessionId, fileHash);
+  if (duplicate) {
+    res.setHeader('X-Deduplicated', 'true');
+    return res.status(200).json(buildExtractionResponse(duplicate));
+  }
+
+  if (mode === 'sync') {
+    try {
+      const extraction = await runExtractionPipeline({
+        sessionId:  resolvedSessionId,
+        filePath:   file.path,
+        fileName:   file.originalname,
+        mimeType,
+        fileHash,
+      });
+
+      return res.status(200).json(buildExtractionResponse(extraction));
+
+    } catch (err: any) {
+      const code = err.message === 'LLM_TIMEOUT'
+        ? 'LLM_TIMEOUT'
+        : 'LLM_JSON_PARSE_FAIL';
+
+      return res.status(422).json({
+        error: code,
+        message: 'Document extraction failed. The raw response has been stored for review.',
+        retryAfterMs: null,
+      });
+    }
+  }
+
+  if (mode === 'async') {
+    const jobId = uuidv4();
+
+    // Write DB record BEFORE enqueuing — polling endpoint must never 404
+    await createJob({
+      id:         jobId,
+      session_id: resolvedSessionId,
+      status:     'QUEUED',
+      queued_at:  new Date(),
+    });
+
+    await extractionQueue.add('extract', {
+      jobId,
+      sessionId:  resolvedSessionId,
+      filePath:   file.path,
+      fileName:   file.originalname,
+      mimeType,
+      fileHash,
+    });
+
+    return res.status(202).json({
+      jobId,
+      sessionId:       resolvedSessionId,
+      status:          'QUEUED',
+      pollUrl:         `/api/jobs/${jobId}`,
+      estimatedWaitMs: 6000,
+    });
+  }
+
+  return res.status(400).json({
+    error: 'INTERNAL_ERROR',
+    message: 'Invalid mode. Use ?mode=sync or ?mode=async',
+    retryAfterMs: null,
+  });
+}

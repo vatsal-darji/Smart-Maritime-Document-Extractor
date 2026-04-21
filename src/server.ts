@@ -8,9 +8,13 @@ import generalResponse from "./helpers/generalResponse";
 import { pool } from "./db";
 import { setupWorkers } from "./utils/bullmqConfig";
 
+import extractRoute from "./routes/extractRoute";
+import jobsRoute from "./routes/jobRoute";
+import sessionsRoute from "./routes/sessionRoute";
+import healthRoute from "./routes/healthRoute";
+
 declare module "express" {
   interface Request {
-    // user: RequestUserType | any | undefined;
     files: Array<Express.Multer.File>;
   }
 }
@@ -36,7 +40,7 @@ app.use((req, res, next) => {
 app.use(cors({ origin: "*" }));
 
 app.use(express.static(path.join(__dirname, "./../public")));
-app.use(express.json({limit: "50mb"}))
+app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // 404 handler
@@ -44,15 +48,20 @@ app.use((_, res) => {
   return generalResponse(res, null, "Not found", "error", 404);
 });
 
+app.use("/api/extract", extractRoute);
+app.use("/api/jobs", jobsRoute);
+app.use("/api/sessions", sessionsRoute);
+app.use("/api/health", healthRoute);
+
 const http = require("http").Server(app);
 
 async function connectDB() {
-  const client = await pool.connect()
+  const client = await pool.connect();
   client.release();
 }
 
 async function closeConnectionDB() {
-  await pool.end()
+  await pool.end();
 }
 
 async function startServer() {

@@ -62,7 +62,7 @@ export interface LLMDetection {
 
 export interface LLMHolder {
   fullName:       string | null;
-  dateOfBirth:    string | null;   // DD/MM/YYYY
+  dateOfBirth:    string | null;
   nationality:    string | null;
   passportNumber: string | null;
   sirbNumber:     string | null;
@@ -74,8 +74,8 @@ export type FieldImportance = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export type FieldStatus     = 'OK' | 'EXPIRED' | 'WARNING' | 'MISSING' | 'N/A';
 
 export interface LLMField {
-  key:        string;          // snake_case
-  label:      string;          // human-readable
+  key:        string;
+  label:      string;
   value:      string;
   importance: FieldImportance;
   status:     FieldStatus;
@@ -91,8 +91,8 @@ export interface LLMValidity {
 
 export interface LLMCompliance {
   issuingAuthority:   string;
-  regulationReference: string | null;   // e.g. "STCW Reg VI/1"
-  imoModelCourse:     string | null;    // e.g. "IMO 1.22"
+  regulationReference: string | null;
+  imoModelCourse:     string | null;
   recognizedAuthority: boolean;
   limitations:        string | null;
 }

@@ -8,61 +8,7 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL;
 
 type SupportedMimeType = "image/jpeg" | "image/png" | "application/pdf";
 
-// export interface LLMExtractionResult {
-//   detection: {
-//     documentType: string;
-//     documentName: string;
-//     category: string;
-//     applicableRole: "DECK" | "ENGINE" | "BOTH" | "N/A";
-//     isRequired: boolean;
-//     confidence: "HIGH" | "MEDIUM" | "LOW";
-//     detectionReason: string;
-//   };
-//   holder: {
-//     fullName: string | null;
-//     dateOfBirth: string | null;
-//     nationality: string | null;
-//     passportNumber: string | null;
-//     sirbNumber: string | null;
-//     rank: string | null;
-//     photo: "PRESENT" | "ABSENT";
-//   };
-//   fields: Array<{
-//     key: string;
-//     label: string;
-//     value: string;
-//     importance: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-//     status: "OK" | "EXPIRED" | "WARNING" | "MISSING" | "N/A";
-//   }>;
-//   validity: {
-//     dateOfIssue: string | null;
-//     dateOfExpiry: string | null;
-//     isExpired: boolean;
-//     daysUntilExpiry: number | null;
-//     revalidationRequired: boolean | null;
-//   };
-//   compliance: {
-//     issuingAuthority: string;
-//     regulationReference: string | null;
-//     imoModelCourse: string | null;
-//     recognizedAuthority: boolean;
-//     limitations: string | null;
-//   };
-//   medicalData: {
-//     fitnessResult: "FIT" | "UNFIT" | "N/A";
-//     drugTestResult: "NEGATIVE" | "POSITIVE" | "N/A";
-//     restrictions: string | null;
-//     specialNotes: string | null;
-//     expiryDate: string | null;
-//   };
-//   flags: Array<{
-//     severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-//     message: string;
-//   }>;
-//   summary: string;
-// }
-
-function extractJSON(raw: string): LLMExtractionResult | null {
+export function extractJSON(raw: string): LLMExtractionResult | null {
   // direct parse
   try {
     return JSON.parse(raw);
