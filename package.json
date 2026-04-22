@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node build/src/server.js",
     "dev": "nodemon src/server.ts",
-    "migrate": "ts-node src/db/migrate.ts",
+    "migrate": "ts-node -r tsconfig-paths/register src/db/migrate.ts",
     "build": "swc src -d build --source-maps --copy-files",
     "build:tsc": "tsc && tsc-alias"
   },
@@ -22,8 +22,6 @@
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.12.2",
-    "@types/nodemailer": "^7.0.1",
-    "@types/passport": "^1.0.17",
     "@types/pg": "^8.20.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",

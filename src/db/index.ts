@@ -3,9 +3,9 @@ import { Pool, QueryResult, QueryResultRow } from 'pg';
 const pool = new Pool({
   host:     process.env.DB_HOST     ?? 'localhost',
   port:     Number(process.env.DB_PORT ?? 5432),
-  database: process.env.DB_NAME     ?? 'smde',
-  user:     process.env.DB_USER     ?? 'smde',
-  password: process.env.DB_PASSWORD ?? 'smde',
+  database: process.env.DB_NAME     ?? 'maritime_local',
+  user:     process.env.DB_USER     ?? 'postgres',
+  password: process.env.DB_PASSWORD ?? 'postgres',
   max: 10,                   // max connections in pool
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,

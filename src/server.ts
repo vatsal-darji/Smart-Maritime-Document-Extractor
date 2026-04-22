@@ -13,11 +13,11 @@ import jobsRoute from "./routes/jobRoute";
 import sessionsRoute from "./routes/sessionRoute";
 import healthRoute from "./routes/healthRoute";
 
-declare module "express" {
-  interface Request {
-    files: Array<Express.Multer.File>;
-  }
-}
+// declare module "express" {
+//   interface Request {
+//     files: Array<Express.Multer.File>;
+//   }
+// }
 config();
 const app: Application = express();
 const port = process.env.PORT || 8000;
@@ -43,15 +43,15 @@ app.use(express.static(path.join(__dirname, "./../public")));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// 404 handler
-app.use((_, res) => {
-  return generalResponse(res, null, "Not found", "error", 404);
-});
-
 app.use("/api/extract", extractRoute);
 app.use("/api/jobs", jobsRoute);
 app.use("/api/sessions", sessionsRoute);
 app.use("/api/health", healthRoute);
+
+// 404 handler
+app.use((_, res) => {
+  return generalResponse(res, null, "Not found", "error", 404);
+});
 
 const http = require("http").Server(app);
 
@@ -77,8 +77,8 @@ async function startServer() {
   }
 
   http.listen(port, () => {
-    console.log(`🚀 Server running on port ${port}`);
-    console.log(`📚 Environment: ${process.env.NODE_ENV || "development"}`);
+    console.log(`Server running on port ${port}`);
+    console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
   });
 }
 

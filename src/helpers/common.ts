@@ -181,6 +181,17 @@ export const escapeSQLWildcards = (searchTerm: string): string => {
 export const normalizeKey = (str: string = "") =>
   str.toLowerCase().replace(/\s+/g, "_").trim();
 
+export function classifyLlmError(err: any): string {
+  if (err.message === 'LLM_TIMEOUT') return 'LLM_TIMEOUT';
+  if (err.message === 'LLM_JSON_PARSE_FAIL') return 'LLM_JSON_PARSE_FAIL';
+  try {
+    const parsed = JSON.parse(err.message);
+    if (parsed?.error?.code === 503) return 'GEMINI_UNAVAILABLE';
+    if (parsed?.error?.code === 429) return 'GEMINI_RATE_LIMITED';
+  } catch {}
+  return 'LLM_JSON_PARSE_FAIL';
+}
+
 export function generateUniqueUUID() {
   const timestamp = Date.now().toString(36); // Current timestamp in base-36
   const randomPart = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(

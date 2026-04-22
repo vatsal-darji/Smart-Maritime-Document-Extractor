@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { pool } from './index';
 
 async function migrate() {
-  const migrationsDir = path.join(__dirname, '../migrations');
+  const migrationsDir = path.join(__dirname, 'migrations');
 
   const files = fs.readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))

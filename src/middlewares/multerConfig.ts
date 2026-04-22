@@ -3,7 +3,7 @@ import { mkdirSync } from "fs";
 import multer from "multer";
 import path, { extname, resolve } from "path";
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf', 'application/octet-stream'];
 const MAX_SIZE_BYTES = 1024 * 1024 * 10
 
 export const UPLOAD_DIR = resolve(process.cwd(), "uploads");

@@ -22,8 +22,8 @@ export function extractJSON(raw: string): LLMExtractionResult | null {
       return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
     } catch {}
   }
-  
-  //to remove markdown 
+
+  //to remove markdown
   try {
       return JSON.parse(raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
     } catch {}
@@ -87,7 +87,7 @@ ${brokenJson}`;
   return response.text ?? "";
 }
 
-//Public API 
+//Public API
 
 export interface ExtractDocumentResult {
   parsed: LLMExtractionResult;

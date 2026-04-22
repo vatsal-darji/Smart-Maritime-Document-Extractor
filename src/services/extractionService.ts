@@ -128,8 +128,6 @@ export async function runExtractionPipeline(opts: {
 
     throw err;
 
-  } finally {
-    fs.unlink(filePath, () => {});
   }
 }
 

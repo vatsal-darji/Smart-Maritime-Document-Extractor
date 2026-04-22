@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -9,7 +10,8 @@ import {
 } from '@/services/extractionService';
 import { createJob } from '@/repositories/job';
 import { extractionQueue } from '@/helpers/queue';
-import { SupportedExtractionMimeType } from '@/types/extraction'
+import { SupportedExtractionMimeType } from '@/types/extraction';
+import { classifyLlmError } from '@/helpers/common';
 
 function isSupportedMimeType(value: string): value is SupportedExtractionMimeType {
   return (
@@ -22,6 +24,8 @@ function isSupportedMimeType(value: string): value is SupportedExtractionMimeTyp
 export async function extractController(req: Request, res: Response) {
   const file = req.file;
 
+  console.log("ExtractController invoked with query:", req.query);
+
   if (!file) {
     return res.status(400).json({
       error: 'UNSUPPORTED_FORMAT',
@@ -29,6 +33,12 @@ export async function extractController(req: Request, res: Response) {
       retryAfterMs: null,
     });
   }
+
+  console.log("Received file:", {
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size,
+  });
 
   const mode = (req.query.mode as string) ?? 'sync';
   const sessionId = req.body.sessionId as string | undefined;
@@ -76,12 +86,12 @@ export async function extractController(req: Request, res: Response) {
         fileHash,
       });
 
+      fs.unlink(file.path, () => {});
       return res.status(200).json(buildExtractionResponse(extraction));
 
     } catch (err: any) {
-      const code = err.message === 'LLM_TIMEOUT'
-        ? 'LLM_TIMEOUT'
-        : 'LLM_JSON_PARSE_FAIL';
+      fs.unlink(file.path, () => {});
+      const code = classifyLlmError(err);
 
       return res.status(422).json({
         error: code,
