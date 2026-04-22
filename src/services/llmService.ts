@@ -8,6 +8,129 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL;
 
 type SupportedMimeType = "image/jpeg" | "image/png" | "application/pdf";
 
+export type LLMErrorSource = "GEMINI" | "LLM" | "FILE";
+
+export class LLMServiceError extends Error {
+  source: LLMErrorSource;
+  code: string;
+  status?: string;
+  httpStatus?: number;
+  retryable: boolean;
+  raw?: unknown;
+  rawText?: string;
+
+  constructor(opts: {
+    source: LLMErrorSource;
+    code: string;
+    message: string;
+    status?: string;
+    httpStatus?: number;
+    retryable?: boolean;
+    raw?: unknown;
+    rawText?: string;
+  }) {
+    super(opts.message);
+    this.name = "LLMServiceError";
+    this.source = opts.source;
+    this.code = opts.code;
+    this.status = opts.status;
+    this.httpStatus = opts.httpStatus;
+    this.retryable = opts.retryable ?? false;
+    this.raw = opts.raw;
+    this.rawText = opts.rawText;
+  }
+}
+
+function parseGeminiError(err: any): {
+  code: string;
+  message: string;
+  status?: string;
+  httpStatus?: number;
+  retryable: boolean;
+  raw?: unknown;
+} {
+  const fallbackMessage = err?.message ?? "Gemini request failed";
+  let parsed: any = null;
+
+  if (typeof err?.message === "string") {
+    try {
+      parsed = JSON.parse(err.message);
+    } catch {}
+  }
+
+  const geminiError = parsed?.error ?? err?.error ?? null;
+  const httpStatus = Number(geminiError?.code ?? err?.status ?? err?.code) || undefined;
+  const status = geminiError?.status ?? err?.statusText;
+  const message = geminiError?.message ?? fallbackMessage;
+  const code = status ? `GEMINI_${status}` : `GEMINI_${httpStatus ?? "ERROR"}`;
+  const retryable =
+    httpStatus === 429 ||
+    httpStatus === 500 ||
+    httpStatus === 502 ||
+    httpStatus === 503 ||
+    httpStatus === 504 ||
+    status === "UNAVAILABLE" ||
+    status === "RESOURCE_EXHAUSTED";
+
+  return {
+    code,
+    message,
+    status,
+    httpStatus,
+    retryable,
+    raw: parsed ?? err,
+  };
+}
+
+function normalizeLLMError(err: any): LLMServiceError {
+  if (err instanceof LLMServiceError) return err;
+
+  if (err?.message === "LLM_TIMEOUT") {
+    return new LLMServiceError({
+      source: "LLM",
+      code: "LLM_TIMEOUT",
+      message: "LLM request timed out.",
+      retryable: true,
+    });
+  }
+
+  if (err?.code === "ENOENT") {
+    return new LLMServiceError({
+      source: "FILE",
+      code: "FILE_NOT_FOUND",
+      message: err.message,
+      retryable: false,
+      raw: err,
+    });
+  }
+
+  const gemini = parseGeminiError(err);
+  return new LLMServiceError({
+    source: "GEMINI",
+    code: gemini.code,
+    message: gemini.message,
+    status: gemini.status,
+    httpStatus: gemini.httpStatus,
+    retryable: gemini.retryable,
+    raw: gemini.raw,
+  });
+}
+
+export function serializeLLMError(err: any) {
+  const normalized = normalizeLLMError(err);
+
+  return {
+    source: normalized.source,
+    code: normalized.code,
+    message: normalized.message,
+    status: normalized.status,
+    httpStatus: normalized.httpStatus,
+    retryable: normalized.retryable,
+    raw: normalized.raw,
+    rawText: normalized.rawText,
+  };
+}
+
 export function extractJSON(raw: string): LLMExtractionResult | null {
   // direct parse
   try {
@@ -102,14 +225,26 @@ export async function extractDocument(
   const basePrompt = llmCommands.extract_command;
 
   //standard extraction
-  let raw = await callGemini(basePrompt, filePath, mimeType);
+  let raw: string;
+  try {
+    raw = await callGemini(basePrompt, filePath, mimeType);
+  } catch (err) {
+    throw normalizeLLMError(err);
+  }
+
   let parsed = extractJSON(raw);
 
   //LOW confidence → retry with filename/mimetype hints
   if (parsed?.detection?.confidence === "LOW") {
     const hintedPrompt = `${basePrompt}\n\nHint: The file name is "${fileName}" and MIME type is "${mimeType}". Use these as additional signals to improve confidence.`;
 
-    const retryRaw = await callGemini(hintedPrompt, filePath, mimeType);
+    let retryRaw: string;
+    try {
+      retryRaw = await callGemini(hintedPrompt, filePath, mimeType);
+    } catch (err) {
+      throw normalizeLLMError(err);
+    }
+
     const retryParsed = extractJSON(retryRaw);
 
     // Only use retry result if it actually improved confidence
@@ -121,15 +256,26 @@ export async function extractDocument(
 
   //parse failed entirely -> send repair prompt
   if (!parsed) {
-    const repairedRaw = await callGeminiRepair(raw);
+    let repairedRaw: string;
+    try {
+      repairedRaw = await callGeminiRepair(raw);
+    } catch (err) {
+      throw normalizeLLMError(err);
+    }
+
     parsed = extractJSON(repairedRaw);
     raw = repairedRaw;
   }
 
   //store raw and surface error to caller
   if (!parsed) {
-    const err = new Error("LLM_JSON_PARSE_FAIL") as any;
-    err.rawText = raw;
+    const err = new LLMServiceError({
+      source: "LLM",
+      code: "LLM_JSON_PARSE_FAIL",
+      message: "LLM response could not be parsed as JSON.",
+      retryable: false,
+      rawText: raw,
+    });
     throw err;
   }
 

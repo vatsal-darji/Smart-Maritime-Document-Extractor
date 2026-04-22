@@ -1,4 +1,3 @@
-import fs from 'fs';
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -12,6 +11,8 @@ import { createJob } from '@/repositories/job';
 import { extractionQueue } from '@/helpers/queue';
 import { SupportedExtractionMimeType } from '@/types/extraction';
 import { classifyLlmError } from '@/helpers/common';
+import { serializeLLMError } from '@/services/llmService';
+import fs from 'node:fs'
 
 function isSupportedMimeType(value: string): value is SupportedExtractionMimeType {
   return (
@@ -54,16 +55,16 @@ export async function extractController(req: Request, res: Response) {
   const mimeType: SupportedExtractionMimeType = file.mimetype;
 
   //verify session id
-  if (sessionId) {
-    const session = await findOrCreateSession(sessionId);
-    if (!session) {
-      return res.status(404).json({
-        error: 'SESSION_NOT_FOUND',
-        message: `Session ${sessionId} does not exist.`,
-        retryAfterMs: null,
-      });
-    }
-  }
+  // if (sessionId) {
+  //   const session = await findOrCreateSession(sessionId);
+  //   if (!session) {
+  //     return res.status(404).json({
+  //       error: 'SESSION_NOT_FOUND',
+  //       message: `Session ${sessionId} does not exist.`,
+  //       retryAfterMs: null,
+  //     });
+  //   }
+  // }
 
   const resolvedSessionId = sessionId ?? uuidv4();
   await findOrCreateSession(resolvedSessionId);
@@ -79,9 +80,9 @@ export async function extractController(req: Request, res: Response) {
   if (mode === 'sync') {
     try {
       const extraction = await runExtractionPipeline({
-        sessionId:  resolvedSessionId,
-        filePath:   file.path,
-        fileName:   file.originalname,
+        sessionId: resolvedSessionId,
+        filePath: file.path,
+        fileName: file.originalname,
         mimeType,
         fileHash,
       });
@@ -92,10 +93,15 @@ export async function extractController(req: Request, res: Response) {
     } catch (err: any) {
       fs.unlink(file.path, () => {});
       const code = classifyLlmError(err);
+      const llmError = serializeLLMError(err);
 
       return res.status(422).json({
-        error: code,
-        message: 'Document extraction failed. The raw response has been stored for review.',
+        error: llmError.code,
+        source: llmError.source,
+        message: llmError.message,
+        providerStatus: llmError.status,
+        providerHttpStatus: llmError.httpStatus,
+        retryable: llmError.retryable,
         retryAfterMs: null,
       });
     }
@@ -103,6 +109,14 @@ export async function extractController(req: Request, res: Response) {
 
   if (mode === 'async') {
     const jobId = uuidv4();
+
+    console.log('[Extract] Creating async extraction job', {
+      dbJobId: jobId,
+      sessionId: resolvedSessionId,
+      fileName: file.originalname,
+      mimeType,
+      fileSize: file.size,
+    });
 
     // Write DB record BEFORE enqueuing — polling endpoint must never 404
     await createJob({
@@ -112,13 +126,33 @@ export async function extractController(req: Request, res: Response) {
       queued_at:  new Date(),
     });
 
-    await extractionQueue.add('extract', {
+    console.log('[Extract] DB job created, adding job to BullMQ', {
+      dbJobId: jobId,
+      queueName: 'extraction',
+    });
+
+    const bullJob = await extractionQueue.add('extract', {
       jobId,
       sessionId:  resolvedSessionId,
       filePath:   file.path,
       fileName:   file.originalname,
       mimeType,
       fileHash,
+    });
+
+    const counts = await extractionQueue.getJobCounts(
+      'waiting',
+      'active',
+      'delayed',
+      'failed',
+      'completed',
+      'paused',
+    );
+
+    console.log('[Extract] Async extraction job enqueued', {
+      bullJobId: bullJob.id,
+      dbJobId: jobId,
+      queueCounts: counts,
     });
 
     return res.status(202).json({

@@ -3,6 +3,24 @@ import { findJobById } from "@/repositories/job";
 import { findExtractionById } from "@/repositories/extraction";
 import { buildExtractionResponse } from "@/services/extractionService";
 
+function parseJobError(errorMessage: string | null): unknown {
+  if (!errorMessage) return null;
+
+  try {
+    return JSON.parse(errorMessage);
+  } catch {
+    return null;
+  }
+}
+
+function getJobErrorMessage(details: unknown, fallback: string | null): string | null {
+  if (details && typeof details === "object" && "message" in details) {
+    return (details as { message?: string }).message ?? fallback;
+  }
+
+  return fallback;
+}
+
 export async function getJobController(req: Request, res: Response) {
   const { jobId } = req.params as {jobId: string};
 
@@ -27,11 +45,14 @@ export async function getJobController(req: Request, res: Response) {
 
   // FAILED
   if (job.status === "FAILED") {
+    const details = parseJobError(job.error_message);
+
     return res.status(200).json({
       jobId: job.id,
       status: "FAILED",
       error: job.error_code,
-      message: job.error_message,
+      message: getJobErrorMessage(details, job.error_message),
+      details,
       failedAt: job.failed_at,
       retryable: job.retryable,
     });

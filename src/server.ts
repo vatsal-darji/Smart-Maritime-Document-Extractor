@@ -6,7 +6,7 @@ import { engine } from "express-handlebars";
 
 import generalResponse from "./helpers/generalResponse";
 import { pool } from "./db";
-import { setupWorkers } from "./utils/bullmqConfig";
+import { setupWorkers } from "./helpers/queue";
 
 import extractRoute from "./routes/extractRoute";
 import jobsRoute from "./routes/jobRoute";
