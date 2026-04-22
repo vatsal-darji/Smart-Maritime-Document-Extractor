@@ -1,4 +1,4 @@
-import { queryOne } from '@/db/index';
+import { queryOne, queryRows } from '@/db/index';
 import { JobRow, JobStatus, CreateJobInput } from '@/types/db';
 
 export async function createJob(input: CreateJobInput): Promise<JobRow> {
@@ -65,7 +65,7 @@ export async function updateJobFailed(
 export async function findPendingJobsBySession(
   sessionId: string,
 ): Promise<JobRow[]> {
-  return (await queryOne<{ rows: JobRow[] }>(
+  return (await queryRows<{ rows: JobRow[] }>(
     `SELECT * FROM jobs
      WHERE session_id = $1
        AND status IN ('QUEUED', 'PROCESSING')

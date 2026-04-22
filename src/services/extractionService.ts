@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
-import { extractDocument } from '@/services/llmService';
+import { extractDocument, serializeLLMError } from '@/services/llmService';
 import {
   LLMExtractionResult,
   SupportedExtractionMimeType,
@@ -98,8 +98,18 @@ export async function runExtractionPipeline(opts: {
   fileName: string;
   mimeType: SupportedExtractionMimeType;
   fileHash: string;
+  cleanupFile?: boolean;
+  persistFailure?: boolean;
 }): Promise<ExtractionRow> {
-  const { sessionId, filePath, fileName, mimeType, fileHash } = opts;
+  const {
+    sessionId,
+    filePath,
+    fileName,
+    mimeType,
+    fileHash,
+    cleanupFile = true,
+    persistFailure = true,
+  } = opts;
   const startTime = Date.now();
 
   try {
@@ -114,22 +124,27 @@ export async function runExtractionPipeline(opts: {
     return row;
 
   } catch (err: any) {
-    await createExtraction({
-      id: uuidv4(),
-      session_id: sessionId,
-      file_name: fileName,
-      file_hash: fileHash,
-      is_expired: false,
-      raw_llm_response: err.rawText ?? err.message ?? "Unknown error",
-      processing_time_ms: Date.now() - startTime,
-      status: "FAILED",
-      prompt_version: "v1",
-    });
+    if (persistFailure) {
+      const llmError = serializeLLMError(err);
+      await createExtraction({
+        id: uuidv4(),
+        session_id: sessionId,
+        file_name: fileName,
+        file_hash: fileHash,
+        is_expired: false,
+        raw_llm_response: JSON.stringify(llmError),
+        processing_time_ms: Date.now() - startTime,
+        status: "FAILED",
+        prompt_version: "v1",
+      });
+    }
 
     throw err;
 
   } finally {
-    fs.unlink(filePath, () => {});
+    if (cleanupFile) {
+      fs.unlink(filePath, () => {});
+    }
   }
 }
 

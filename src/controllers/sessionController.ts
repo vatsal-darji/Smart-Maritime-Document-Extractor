@@ -84,6 +84,8 @@ export async function validateSessionController(req: Request, res: Response) {
   }
 
   const extractions = await findExtractionsBySession(sessionId);
+  
+  console.log("extractions => ", extractions)
 
   // Assessment requires minimum 2 documents
   if (extractions.length < 2) {
@@ -93,7 +95,6 @@ export async function validateSessionController(req: Request, res: Response) {
       retryAfterMs: null,
     });
   }
-
   try {
     const validation = await runValidation(sessionId, extractions);
 
@@ -111,6 +112,7 @@ export async function validateSessionController(req: Request, res: Response) {
       validatedAt: validation.validated_at,
     });
   } catch (err: any) {
+    console.log("error in session validate controller: ", err)
     return res.status(500).json({
       error: "INTERNAL_ERROR",
       message: "Validation failed. Please try again.",
