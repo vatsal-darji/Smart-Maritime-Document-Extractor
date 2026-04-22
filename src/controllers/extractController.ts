@@ -22,6 +22,15 @@ function isSupportedMimeType(value: string): value is SupportedExtractionMimeTyp
   );
 }
 
+function isValidWebhookUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export async function extractController(req: Request, res: Response) {
   const file = req.file;
 
@@ -43,6 +52,15 @@ export async function extractController(req: Request, res: Response) {
 
   const mode = (req.query.mode as string) ?? 'sync';
   const sessionId = req.body.sessionId as string | undefined;
+  const webhookUrl = req.body.webhookUrl as string | undefined;
+
+  if (webhookUrl && !isValidWebhookUrl(webhookUrl)) {
+    return res.status(400).json({
+      error: 'INVALID_WEBHOOK_URL',
+      message: 'webhookUrl must be a valid HTTP or HTTPS URL.',
+      retryAfterMs: null,
+    });
+  }
 
   if (!isSupportedMimeType(file.mimetype)) {
     return res.status(400).json({
@@ -138,6 +156,7 @@ export async function extractController(req: Request, res: Response) {
       fileName:   file.originalname,
       mimeType,
       fileHash,
+      webhookUrl,
     });
 
     const counts = await extractionQueue.getJobCounts(

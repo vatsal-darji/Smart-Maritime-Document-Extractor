@@ -10,6 +10,7 @@ export interface ExtractionJobPayload {
   fileName: string;
   mimeType: SupportedExtractionMimeType;
   fileHash: string;
+  webhookUrl?: string;
 };
 
 export type Confidence      = 'HIGH' | 'MEDIUM' | 'LOW';

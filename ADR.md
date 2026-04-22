@@ -249,15 +249,24 @@ This was deprioritised because the assessment focuses on the extraction pipeline
 JWT middleware or API key validation is straightforward but would not demonstrate
 anything the evaluators are testing for.
 
-**2. Webhook support for async job completion**
+**2. Webhook support — implemented as bonus**
 
-The assessment lists this as optional. The implementation is clean in theory — accept
-a `webhookUrl` field on the async request, store it on the job record, POST the result
-to that URL with an HMAC-SHA256 signature when the worker completes. The complexity
-is in delivery reliability: what happens if the webhook endpoint is down? You need a
-retry queue for outbound requests, which is a separate BullMQ queue with its own
-worker. That scope expansion was not worth the time given the core pipeline was the
-priority.
+Async job completion delivers a signed POST to an optional `webhookUrl` field
+on the extract request. The payload is HMAC-SHA256 signed using `WEBHOOK_SECRET`
+and sent with an `X-Maritime-Signature: sha256=<hex>` header so the receiver can
+verify authenticity.
+
+Delivery is fire-and-forget via `safeDeliverWebhook` — a failed delivery is
+logged but never crashes the worker or affects the job result. This is intentional:
+the job is already complete at delivery time, and retrying webhook delivery is a
+separate concern from retrying extraction.
+
+What is not implemented is webhook delivery retry. If the receiver is temporarily
+down, the event is lost. A production implementation would push failed deliveries
+to a dedicated retry queue with exponential backoff and a dead-letter store. This
+was deprioritised because the core extraction pipeline was the assessment priority,
+and the fire-and-forget pattern is an honest tradeoff worth documenting rather than
+hiding.
 
 **3. Redis-backed rate limiting**
 

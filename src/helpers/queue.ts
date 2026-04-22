@@ -1,8 +1,12 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { redisConnection } from '@/utils/redisConfig';
 import { ExtractionJobPayload } from '@/types/extraction';
-import { runExtractionPipeline } from '@/services/extractionService';
+import {
+  buildExtractionResponse,
+  runExtractionPipeline,
+} from '@/services/extractionService';
 import { serializeLLMError } from '@/services/llmService';
+import { safeDeliverWebhook } from '@/services/webhookService';
 import {
   markJobComplete,
   markJobFailed,
@@ -32,13 +36,37 @@ extractionQueue.on('error', (err) => {
 });
 
 async function processExtractionJob(job: Job<ExtractionJobPayload>) {
-  const { jobId, sessionId, filePath, fileName, mimeType, fileHash } = job.data;
+  const {
+    jobId,
+    sessionId,
+    filePath,
+    fileName,
+    mimeType,
+    fileHash,
+    webhookUrl,
+  } = job.data;
   const timerLabel = `[Queue:extraction] runExtractionPipeline bullJobId=${job.id} attempt=${job.attemptsMade + 1}`;
   let succeeded = false;
   
   if (!fs.existsSync(filePath)) {
       console.error('[Queue:extraction] File not found at path', { filePath, jobId });
       await markJobFailed(jobId, 'FILE_NOT_FOUND', `File missing: ${filePath}`, false);
+      if (webhookUrl) {
+        await safeDeliverWebhook({
+          jobId,
+          url: webhookUrl,
+          event: 'extraction.failed',
+          payload: {
+            jobId,
+            sessionId,
+            status: 'FAILED',
+            error: 'FILE_NOT_FOUND',
+            message: `File missing: ${filePath}`,
+            retryable: false,
+            failedAt: new Date().toISOString(),
+          },
+        });
+      }
       return;
   }
 
@@ -79,6 +107,22 @@ async function processExtractionJob(job: Job<ExtractionJobPayload>) {
       extractionId: extraction.id,
     });
     await markJobComplete(jobId, extraction.id);
+
+    if (webhookUrl) {
+      await safeDeliverWebhook({
+        jobId,
+        url: webhookUrl,
+        event: 'extraction.completed',
+        payload: {
+          jobId,
+          sessionId,
+          status: 'COMPLETE',
+          extractionId: extraction.id,
+          result: buildExtractionResponse(extraction),
+          completedAt: new Date().toISOString(),
+        },
+      });
+    }
 
     return { extractionId: extraction.id };
 
@@ -208,6 +252,25 @@ export const setupWorkers = () => {
         JSON.stringify(llmError),
         llmError.retryable,
       );
+      if (job.data.webhookUrl) {
+        await safeDeliverWebhook({
+          jobId: job.data.jobId,
+          url: job.data.webhookUrl,
+          event: 'extraction.failed',
+          payload: {
+            jobId: job.data.jobId,
+            sessionId: job.data.sessionId,
+            status: 'FAILED',
+            error: llmError.code,
+            source: llmError.source,
+            message: llmError.message,
+            providerStatus: llmError.status,
+            providerHttpStatus: llmError.httpStatus,
+            retryable: llmError.retryable,
+            failedAt: new Date().toISOString(),
+          },
+        });
+      }
     } else {
       console.log('[Queue:extraction] Job will retry', {
         bullJobId: job.id,
